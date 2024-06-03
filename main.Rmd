@@ -1,13 +1,13 @@
 ---
 title: "Анализа криминалних дешавања на територији града Чикага"
 author: "Andrija Stanišić"
+date: "`r Sys.Date()`"
 output: html_document
-date: "2024-06-01"
 ---
 
 ## Увод
 
-Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података.
+Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података. Конкретно, реализована је класификација према врсти криминалног дела.
 
 Скуп података је величине 1.9 гигабајта и садржи следећа обележја:
 
@@ -21,7 +21,7 @@ date: "2024-06-01"
 
 -   **IUCR** -\> Илиноиски уједињени код за пријаву криминала.
 
--   **Primary Type** -\> Главна категорија криминалног дела.
+-   **Primary Type** -\> Тип криминалног дела.
 
 -   **Description** -\> Детаљан опис криминалног дела.
 
@@ -43,17 +43,17 @@ date: "2024-06-01"
 
 -   **Х Coordinate** -\> Географска Х координата.
 
--   **Y Coordinate** -\> Географска Y координата
+-   **Y Coordinate** -\> Географска Y координата.
 
--   **Year** -\> Година инцидента
+-   **Year** -\> Година инцидента.
 
--   **Updated On** -\> Датум последњег ажурирања
+-   **Updated On** -\> Датум последњег ажурирања.
 
--   **Latitude** -\> Географска ширина локације
+-   **Latitude** -\> Географска ширина локације.
 
--   **Longitude** -\> Географска дужина локације
+-   **Longitude** -\> Географска дужина локације.
 
--   **Location** -\> Географска локација инцидента
+-   **Location** -\> Географска локација инцидента.
 
 ### Учитавање неопходних зависности
 
@@ -108,7 +108,7 @@ data <- data %>%
          !is.na(`Primary_Type`))
 ```
 
-2.  Идентификација и вузуaлизација скупа вредности обележја Primary_Type
+2.  Идентификација и вузуaлизација скупа вредности обележја *Primary_Type*
 
 ```{r eval=T, results='hold'}
 primary_type_counts <- data %>%
@@ -130,7 +130,7 @@ ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
         axis.title.y = element_text(margin = margin(r=20)))
 ```
 
--   Имајући у виду степен варијабилности обележја Primary_Type, неопходно је извришити филтрирање и агрегацију. Овај корак има за циљ да смањи иницијални скуп вредности и на тај начин омогући ефикасну анализу.
+-   Имајући у виду степен варијабилности обележја *Primary_Type*, неопходно је извришити филтрирање и агрегацију. Овај корак има за циљ да смањи иницијални скуп вредности и на тај начин омогући ефикасну анализу.
 
 ```{r eval=T, results='hold'}
 
@@ -148,7 +148,7 @@ data <- data %>%
   ))
 ```
 
--   Визуализација вредности обележја Primary_Type након трансформације.
+-   Визуализација вредности обележја *Primary_Type* након трансформације.
 
 ```{r eval=T, results='hold'}
 primary_type_counts <- data %>%
@@ -156,22 +156,24 @@ primary_type_counts <- data %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-#print(primary_type_counts)
+print(primary_type_counts)
 
-ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count, fill = Primary_Type)) +
-  geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = c("VIOLENT_CRIME" = "red", "PROPERTY_CRIME" = "orange", "OTHER" = "grey")) +
-  labs(title = "Frequency of Primary Type",
-       x = "Primary Type",
+```
+
+```{r eval=T, results='hold'}
+ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
+  geom_bar(stat = "identity", color = "black", fill = "grey") +
+  labs(title = "Frequency of Community Area",
+       x = "Community Area",
        y = "Count") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(margin = margin(t = 20)),
-        axis.title.y = element_text(margin = margin(r=20)))
+        axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-3.  Идентификација и вузуaлизација скупа вредности обележја Community_Area
+3.  Идентификација и вузуaлизација скупа вредности обележја *Community_Area*
 
 ```{r eval=T, results='hold'}
 community_area_counts <- data %>%
@@ -179,8 +181,11 @@ community_area_counts <- data %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-#print(community_area_counts)
+print(community_area_counts)
 
+```
+
+```{r eval=T, results='hold'}
 dbplot_histogram(data, x = Community_Area, binwidth = 1) +
   labs(title = "Histogram Community Area",
        x = "Community Area",
@@ -191,7 +196,7 @@ dbplot_histogram(data, x = Community_Area, binwidth = 1) +
         axis.title.y = element_text(margin = margin(r=20)))
 ```
 
--   Анализом секундарних извора утврђено је да у Чикагу постоје заједнице које су нумерисане од 1 до 77. Дакле, најпре је неопходно уклонити редове чија вредност не припада овом интервалу. Додатно, ради ефикасније анализе, заједнице су груписане у групе од по петнаест чланова.
+-   Како би анализа била једноставнија, административне јединице су груписане у пет група са приближно истим бројем ентитета. Додатно, анализом секундарних извора утврђено је да у Чикагу постоје административне јединице које су нумерисане од 1 до 77. Дакле, неопходно је уклонити редове чија вредност не припада овом интервалу.
 
 ```{r eval=T, results='hold'}
 data <- data %>%
@@ -204,45 +209,56 @@ data <- data %>%
     TRUE ~ Community_Area
   ))
 
-# community_area_counts <- data %>%
-#   group_by(Community_Area) %>%
-#   summarise(count = n()) %>%
-#   arrange(desc(count)) %>%
-#   collect()
-# print(community_area_counts)
-
-#gas <- temp_data %>% filter(Community_Area == 0)
 data <- data %>% filter(!(Community_Area <= 0 | Community_Area > 5))
-#print(head(data))
+
 ```
 
--   Визуализација вредности обележја Community_Area након трансформације.
+-   Визуализација вредности обележја *Community_Area* након трансформације.
 
 ```{r eval=T, results='hold'}
-# community_area_counts <- data %>%
-#   group_by(Community_Area) %>%
-#   summarise(count = n()) %>%
-#   arrange(desc(count)) %>%
-#   collect()
-#print(community_area_counts)
-
-print(head(data))
-
-# colors <- c("1" = "skyblue", "2" = "orange", "3" = "green", "4" = "purple", "5" = "red")
-# 
-# ggplot(data, aes(x = factor(Community_Area))) +
-#   geom_bar(aes(y = after_stat(count)), fill = "skyblue", color = "black") +
-#   labs(title = "Histogram of Community Groups",
-#        x = "Community Group",
-#        y = "Frequency") +
-#   theme_minimal()
+community_area_counts <- data %>%
+  group_by(Community_Area) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+print(community_area_counts)
 ```
 
 ```{r eval=T, results='hold'}
-ggplot(data, aes(x = Longitude, y = Latitude)) +
-  geom_point() +
-  labs(title = "Scatter plot lokacija",
-       x = "Longitude",
-       y = "Latitude") +
-  theme_minimal()
+ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
+  geom_bar(stat = "identity", color = "black", fill = "grey") +
+  labs(title = "Frequency of Community Area",
+       x = "Community Area",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)))
+```
+
+-   Визуализација вредности обележја *Arrest*.
+
+```{r eval=T, results='hold'}
+arrest_count <- data %>%
+  group_by(Arrest) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+print(arrest_count)
+```
+
+```{r eval=T, results='hold'}
+ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
+  geom_bar(stat = "identity", color = "black") +
+  coord_polar(theta = "y") +
+  labs(title = "Pie Chart of Arrest",
+       fill = "Arrest",
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r eval=T, results='hold'}
 ```

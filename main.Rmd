@@ -1,9 +1,61 @@
 ---
-title: "RVPII"
+title: "Анализа криминалних дешавања на територији града Чикага"
 author: "Andrija Stanišić"
 output: html_document
 date: "2024-06-01"
 ---
+
+## Увод
+
+Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података.
+
+Скуп података је величине 1.9 гигабајта и садржи следећа обележја:
+
+-   **ID** -\> Идентификациона ознака реда.
+
+-   **Case Number** -\> Јединствени број полицијског случаја.
+
+-   **Date** -\> Датум инцидента.
+
+-   **Block** -\> Блок где се догодио инцидент.
+
+-   **IUCR** -\> Илиноиски уједињени код за пријаву криминала.
+
+-   **Primary Type** -\> Главна категорија криминалног дела.
+
+-   **Description** -\> Детаљан опис криминалног дела.
+
+-   **Location Description** -\> Опис места где се инцидент догодио.
+
+-   **Arrest** -\> Ова информација означава да ли је починилац приведен након инцидента.
+
+-   **Domestic** -\> Ово обележје означава да ли је инцидент повезан са насиљем у породици.
+
+-   **Beat** -\> Полицијски сектор у којем се догодио инцидент.
+
+-   **District** -\> Полицијски округ у којем се догодио инцидент.
+
+-   **Ward** -\> Општина у којој се догодио инцидент.
+
+-   **Community_Area** -\> Административне јединице у оквиру Чикага.
+
+-   **FBI Code** -\> Код према Федералном бироу за истраживање.
+
+-   **Х Coordinate** -\> Географска Х координата.
+
+-   **Y Coordinate** -\> Географска Y координата
+
+-   **Year** -\> Година инцидента
+
+-   **Updated On** -\> Датум последњег ажурирања
+
+-   **Latitude** -\> Географска ширина локације
+
+-   **Longitude** -\> Географска дужина локације
+
+-   **Location** -\> Географска локација инцидента
+
+### Учитавање неопходних зависности
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -26,12 +78,8 @@ conf["spark.executor.memory"] <- "16G"
 conf["sparklyr.shell.driver-memory"] <- "16G"
 ```
 
-## Увод
-...
-## Скуп података
-...
+### Учитавање скупа података
 
-## Учитавање скупа података
 ```{r eval=T, results='hold'}
 data = spark_read_csv(sc, 
                       name = "data", 
@@ -42,18 +90,13 @@ data = spark_read_csv(sc,
 #print(head(data))
 ```
 
-## Идентификација скупа вредности обележја Primary_Type
-```{r eval=T, results='hold'}
-unique_values <- data %>%
-  distinct(Primary_Type) %>%
-  collect() %>%
-  pull()
-print(unique_values)
-```
+### Припремање скупа података за даљу анализу
 
-## Идентификација и уклањање непостојећих вредности
+Како би анализа података била ефикасна, неопходно је трансформисати почетни скуп података. Иницијална трансформација реализована је из више фаза:
+
+1.  Идентификација и уклањање непостојећих вредности из колона од интереса
+
 ```{r eval=T, results='hold'}
-#gc()
 data <- data %>%
   filter(!is.na(Arrest) & 
          !is.na(Domestic) & 
@@ -63,50 +106,143 @@ data <- data %>%
          !is.na(ID) & 
          !is.na(Date) & 
          !is.na(`Primary_Type`))
-
-data <- data %>%
-  filter(!(Primary_Type %in% c("NON - CRIMINAL", "NON-CRIMINAL", "NON-CRIMINAL (SUBJECT SPECIFIED)")))
 ```
 
-## Агрегација података ради смањења иницијалног броја кластера
+2.  Идентификација и вузуaлизација скупа вредности обележја Primary_Type
+
 ```{r eval=T, results='hold'}
+primary_type_counts <- data %>%
+  group_by(Primary_Type) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+#print(primary_type_counts)
+
+ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  labs(title = "Frequency of Primary Type",
+       x = "Primary Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+-   Имајући у виду степен варијабилности обележја Primary_Type, неопходно је извришити филтрирање и агрегацију. Овај корак има за циљ да смањи иницијални скуп вредности и на тај начин омогући ефикасну анализу.
+
+```{r eval=T, results='hold'}
+
 data <- data %>%
-  mutate(Primary_Type_Modified = case_when(
-    Primary_Type %in% c("ASSAULT", "BATTERY", "HOMICIDE", "KIDNAPPING", 
-                        "ROBBERY", "STALKING", "DOMESTIC VIOLENCE", 
-                        "HUMAN TRAFFICKING") ~ "VIOLENT_CRIME",
-    
-    Primary_Type %in% c("ARSON", "BURGLARY", "CRIMINAL DAMAGE", 
-                        "MOTOR VEHICLE THEFT", "THEFT", "CRIMINAL TRESPASS", 
-                        "DECEPTIVE PRACTICE") ~ "PROPERTY_CRIME",
-    
-    Primary_Type %in% c("INTERFERENCE WITH PUBLIC OFFICER", "INTIMIDATION", 
-                        "PUBLIC PEACE VIOLATION", "PUBLIC INDECENCY", 
-                        "LIQUOR LAW VIOLATION", 
-                        "CONCEALED CARRY LICENSE VIOLATION") ~ "PUBLIC_OFFENSE",
-    
-    Primary_Type %in% c("SEX OFFENSE", "CRIM SEXUAL ASSAULT", "OBSCENITY", 
-                        "OFFENSE INVOLVING CHILDREN",
-                        "CRIMINAL SEXUAL ASSAULT", "PROSTITUTION") ~ "SEX_OFFENSE",
-    
-    Primary_Type %in% c("RITUALISM", "OTHER OFFENSE", 
-                        "OTHER NARCOTIC VIOLATION", "NARCOTICS", 
-                        "GAMBLING", "WEAPONS VIOLATION") ~ "OTHER",
+  filter(!(Primary_Type %in% 
+             c("NON - CRIMINAL", "NON-CRIMINAL", "NON-CRIMINAL (SUBJECT SPECIFIED)", "HUMAN TRAFFICKING", "RITUALISM", "HOMICIDE", "ARSON", "CRIMINAL SEXUAL ASSAULT", "KIDNAPPING", "STALKING", "INTIMIDATION", "CONCEALED CARRY LICENSE VIOLATION", "OBSCENITY", "PUBLIC INDECENCY", "OTHER NARCOTIC VIOLATION", "SEX OFFENSE", "CRIM SEXUAL ASSAULT", 
+"INTERFERENCE WITH PUBLIC OFFICER", "GAMBLING", "LIQUOR LAW VIOLATION")))
+
+data <- data %>%
+  mutate(Primary_Type = case_when(
+    Primary_Type %in% c("BATTERY", "ASSAULT", "ROBBERY", "WEAPONS VIOLATION", "OFFENSE INVOLVING CHILDREN", "PUBLIC PEACE VIOLATION") ~ "VIOLENT_CRIME",
+    Primary_Type %in% c("THEFT", "BURGLARY", "MOTOR VEHICLE THEFT", "CRIMINAL TRESPASS") ~ "PROPERTY_CRIME",
+    Primary_Type %in% c("NARCOTICS", "CRIMINAL DAMAGE", "OTHER OFFENSE", "DECEPTIVE PRACTICE", "PROSTITUTION") ~ "OTHER",
     TRUE ~ Primary_Type
   ))
+```
 
+-   Визуализација вредности обележја Primary_Type након трансформације.
+
+```{r eval=T, results='hold'}
+primary_type_counts <- data %>%
+  group_by(Primary_Type) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+#print(primary_type_counts)
+
+ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count, fill = Primary_Type)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = c("VIOLENT_CRIME" = "red", "PROPERTY_CRIME" = "orange", "OTHER" = "grey")) +
+  labs(title = "Frequency of Primary Type",
+       x = "Primary Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+3.  Идентификација и вузуaлизација скупа вредности обележја Community_Area
+
+```{r eval=T, results='hold'}
+community_area_counts <- data %>%
+  group_by(Community_Area) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+#print(community_area_counts)
+
+dbplot_histogram(data, x = Community_Area, binwidth = 1) +
+  labs(title = "Histogram Community Area",
+       x = "Community Area",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+-   Анализом секундарних извора утврђено је да у Чикагу постоје заједнице које су нумерисане од 1 до 77. Дакле, најпре је неопходно уклонити редове чија вредност не припада овом интервалу. Додатно, ради ефикасније анализе, заједнице су груписане у групе од по петнаест чланова.
+
+```{r eval=T, results='hold'}
+data <- data %>%
+ mutate(Community_Area = case_when(
+    Community_Area %in% 1:15 ~ 1,
+    Community_Area %in% 16:30 ~ 2,
+    Community_Area %in% 31:45 ~ 3,
+    Community_Area %in% 46:60 ~ 4,
+    Community_Area %in% 61:77 ~ 5,
+    TRUE ~ Community_Area
+  ))
+
+# community_area_counts <- data %>%
+#   group_by(Community_Area) %>%
+#   summarise(count = n()) %>%
+#   arrange(desc(count)) %>%
+#   collect()
+# print(community_area_counts)
+
+#gas <- temp_data %>% filter(Community_Area == 0)
+data <- data %>% filter(!(Community_Area <= 0 | Community_Area > 5))
 #print(head(data))
 ```
 
-## Приказ хистограма за обележје Community_Area
+-   Визуализација вредности обележја Community_Area након трансформације.
+
 ```{r eval=T, results='hold'}
-ggplot(data = data, aes(x = Community_Area)) +
-  geom_histogram(binwidth = 10, fill = "skyblue", color = "black") +
-  labs(title = "Histogram Community Area",
-       x = "Community Area",
-       y = "Frequency")
+# community_area_counts <- data %>%
+#   group_by(Community_Area) %>%
+#   summarise(count = n()) %>%
+#   arrange(desc(count)) %>%
+#   collect()
+#print(community_area_counts)
+
+print(head(data))
+
+# colors <- c("1" = "skyblue", "2" = "orange", "3" = "green", "4" = "purple", "5" = "red")
+# 
+# ggplot(data, aes(x = factor(Community_Area))) +
+#   geom_bar(aes(y = after_stat(count)), fill = "skyblue", color = "black") +
+#   labs(title = "Histogram of Community Groups",
+#        x = "Community Group",
+#        y = "Frequency") +
+#   theme_minimal()
 ```
 
-
-
-
+```{r eval=T, results='hold'}
+ggplot(data, aes(x = Longitude, y = Latitude)) +
+  geom_point() +
+  labs(title = "Scatter plot lokacija",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal()
+```

@@ -1,0 +1,112 @@
+---
+title: "RVPII"
+author: "Andrija Stanišić"
+output: html_document
+date: "2024-06-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/home/astanisic/FTN/r-classification-model")
+```
+
+```{r eval=T, echo=F, results='hide', include=FALSE}
+Sys.setlocale("LC_CTYPE", "sr_RS.UTF-8")
+
+library(sparklyr)
+library(ggplot2)
+library(dbplot)
+library(dplyr)
+library(knitr)
+
+sc <- spark_connect(master = "local", version="3.3")
+
+conf <- spark_config()
+conf["spark.executor.memory"] <- "16G"
+conf["sparklyr.shell.driver-memory"] <- "16G"
+```
+
+## Увод
+...
+## Скуп података
+...
+
+## Учитавање скупа података
+```{r eval=T, results='hold'}
+data = spark_read_csv(sc, 
+                      name = "data", 
+                      path = "/home/astanisic/FTN/r-classification-model/data/crime_data.csv", 
+                      header = TRUE, 
+                      memory = TRUE)
+
+#print(head(data))
+```
+
+## Идентификација скупа вредности обележја Primary_Type
+```{r eval=T, results='hold'}
+unique_values <- data %>%
+  distinct(Primary_Type) %>%
+  collect() %>%
+  pull()
+print(unique_values)
+```
+
+## Идентификација и уклањање непостојећих вредности
+```{r eval=T, results='hold'}
+#gc()
+data <- data %>%
+  filter(!is.na(Arrest) & 
+         !is.na(Domestic) & 
+         !is.na(Latitude) & 
+         !is.na(Longitude) & 
+         !is.na(Community_Area) & 
+         !is.na(ID) & 
+         !is.na(Date) & 
+         !is.na(`Primary_Type`))
+
+data <- data %>%
+  filter(!(Primary_Type %in% c("NON - CRIMINAL", "NON-CRIMINAL", "NON-CRIMINAL (SUBJECT SPECIFIED)")))
+```
+
+## Агрегација података ради смањења иницијалног броја кластера
+```{r eval=T, results='hold'}
+data <- data %>%
+  mutate(Primary_Type_Modified = case_when(
+    Primary_Type %in% c("ASSAULT", "BATTERY", "HOMICIDE", "KIDNAPPING", 
+                        "ROBBERY", "STALKING", "DOMESTIC VIOLENCE", 
+                        "HUMAN TRAFFICKING") ~ "VIOLENT_CRIME",
+    
+    Primary_Type %in% c("ARSON", "BURGLARY", "CRIMINAL DAMAGE", 
+                        "MOTOR VEHICLE THEFT", "THEFT", "CRIMINAL TRESPASS", 
+                        "DECEPTIVE PRACTICE") ~ "PROPERTY_CRIME",
+    
+    Primary_Type %in% c("INTERFERENCE WITH PUBLIC OFFICER", "INTIMIDATION", 
+                        "PUBLIC PEACE VIOLATION", "PUBLIC INDECENCY", 
+                        "LIQUOR LAW VIOLATION", 
+                        "CONCEALED CARRY LICENSE VIOLATION") ~ "PUBLIC_OFFENSE",
+    
+    Primary_Type %in% c("SEX OFFENSE", "CRIM SEXUAL ASSAULT", "OBSCENITY", 
+                        "OFFENSE INVOLVING CHILDREN",
+                        "CRIMINAL SEXUAL ASSAULT", "PROSTITUTION") ~ "SEX_OFFENSE",
+    
+    Primary_Type %in% c("RITUALISM", "OTHER OFFENSE", 
+                        "OTHER NARCOTIC VIOLATION", "NARCOTICS", 
+                        "GAMBLING", "WEAPONS VIOLATION") ~ "OTHER",
+    TRUE ~ Primary_Type
+  ))
+
+#print(head(data))
+```
+
+## Приказ хистограма за обележје Community_Area
+```{r eval=T, results='hold'}
+ggplot(data = data, aes(x = Community_Area)) +
+  geom_histogram(binwidth = 10, fill = "skyblue", color = "black") +
+  labs(title = "Histogram Community Area",
+       x = "Community Area",
+       y = "Frequency")
+```
+
+
+
+

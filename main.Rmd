@@ -7,7 +7,7 @@ output: html_document
 
 ## Увод
 
-Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података. Конкретно, реализована је класификација према врсти криминалног дела.
+Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података. Конкретно, класификација је извршена на основу информација о успешно реализованим хапшењима починиоца кривичног дела.
 
 Скуп података је величине 1.9 гигабајта и садржи следећа обележја:
 
@@ -65,6 +65,8 @@ knitr::opts_knit$set(root.dir = "/home/astanisic/FTN/r-classification-model")
 ```{r eval=T, echo=F, results='hide', include=FALSE}
 Sys.setlocale("LC_CTYPE", "sr_RS.UTF-8")
 
+#options(java.parameters = "-Xmx8g")
+
 library(sparklyr)
 library(ggplot2)
 library(dbplot)
@@ -87,39 +89,33 @@ data = spark_read_csv(sc,
                       header = TRUE, 
                       memory = TRUE)
 
-#print(head(data))
+print(head(data))
 ```
 
-### Припремање скупа података за даљу анализу
+## Припрема скупа података за даљу анализу
 
 Како би анализа података била ефикасна, неопходно је трансформисати почетни скуп података. Иницијална трансформација реализована је из више фаза:
 
-1.  Идентификација и уклањање непостојећих вредности из колона од интереса
+1.  Идентификација и уклањање непостојећих вредности из колона од интереса:
 
 ```{r eval=T, results='hold'}
-data <- data %>%
-  filter(!is.na(Arrest) & 
-         !is.na(Domestic) & 
-         !is.na(Latitude) & 
-         !is.na(Longitude) & 
-         !is.na(Community_Area) & 
-         !is.na(ID) & 
-         !is.na(Date) & 
-         !is.na(`Primary_Type`))
+data_clean <- data %>% na.omit()
 ```
 
-2.  Идентификација и вузуaлизација скупа вредности обележја *Primary_Type*
+2.  Идентификација и вузуaлизација скупа вредности обележја *Primary_Type*:
 
 ```{r eval=T, results='hold'}
-primary_type_counts <- data %>%
+primary_type_counts <- data_clean %>%
   group_by(Primary_Type) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-#print(primary_type_counts)
+print(primary_type_counts)
+```
 
+```{r eval=T, results='hold'}
 ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Frequency of Primary Type",
        x = "Primary Type",
        y = "Count") +
@@ -133,13 +129,12 @@ ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
 -   Имајући у виду степен варијабилности обележја *Primary_Type*, неопходно је извришити филтрирање и агрегацију. Овај корак има за циљ да смањи иницијални скуп вредности и на тај начин омогући ефикасну анализу.
 
 ```{r eval=T, results='hold'}
-
-data <- data %>%
+primary_data_modified <- data_clean %>%
   filter(!(Primary_Type %in% 
              c("NON - CRIMINAL", "NON-CRIMINAL", "NON-CRIMINAL (SUBJECT SPECIFIED)", "HUMAN TRAFFICKING", "RITUALISM", "HOMICIDE", "ARSON", "CRIMINAL SEXUAL ASSAULT", "KIDNAPPING", "STALKING", "INTIMIDATION", "CONCEALED CARRY LICENSE VIOLATION", "OBSCENITY", "PUBLIC INDECENCY", "OTHER NARCOTIC VIOLATION", "SEX OFFENSE", "CRIM SEXUAL ASSAULT", 
 "INTERFERENCE WITH PUBLIC OFFICER", "GAMBLING", "LIQUOR LAW VIOLATION")))
 
-data <- data %>%
+primary_data_modified <- primary_data_modified %>%
   mutate(Primary_Type = case_when(
     Primary_Type %in% c("BATTERY", "ASSAULT", "ROBBERY", "WEAPONS VIOLATION", "OFFENSE INVOLVING CHILDREN", "PUBLIC PEACE VIOLATION") ~ "VIOLENT_CRIME",
     Primary_Type %in% c("THEFT", "BURGLARY", "MOTOR VEHICLE THEFT", "CRIMINAL TRESPASS") ~ "PROPERTY_CRIME",
@@ -148,21 +143,20 @@ data <- data %>%
   ))
 ```
 
--   Визуализација вредности обележја *Primary_Type* након трансформације.
+-   Визуализација вредности обележја *Primary_Type* након трансформације:
 
 ```{r eval=T, results='hold'}
-primary_type_counts <- data %>%
+primary_type_counts_1 <- primary_data_modified %>%
   group_by(Primary_Type) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-print(primary_type_counts)
-
+print(primary_type_counts_1)
 ```
 
 ```{r eval=T, results='hold'}
-ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
-  geom_bar(stat = "identity", color = "black", fill = "grey") +
+ggplot(primary_type_counts_1, aes(x = reorder(Primary_Type, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Frequency of Community Area",
        x = "Community Area",
        y = "Count") +
@@ -173,20 +167,19 @@ ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-3.  Идентификација и вузуaлизација скупа вредности обележја *Community_Area*
+3.  Идентификација и вузуaлизација скупа вредности обележја *Community_Area*:
 
 ```{r eval=T, results='hold'}
-community_area_counts <- data %>%
+community_area_counts <- primary_data_modified %>%
   group_by(Community_Area) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
 print(community_area_counts)
-
 ```
 
 ```{r eval=T, results='hold'}
-dbplot_histogram(data, x = Community_Area, binwidth = 1) +
+dbplot_histogram(primary_data_modified, x = Community_Area, binwidth = 1) +
   labs(title = "Histogram Community Area",
        x = "Community Area",
        y = "Frequency") +
@@ -199,7 +192,7 @@ dbplot_histogram(data, x = Community_Area, binwidth = 1) +
 -   Како би анализа била једноставнија, административне јединице су груписане у пет група са приближно истим бројем ентитета. Додатно, анализом секундарних извора утврђено је да у Чикагу постоје административне јединице које су нумерисане од 1 до 77. Дакле, неопходно је уклонити редове чија вредност не припада овом интервалу.
 
 ```{r eval=T, results='hold'}
-data <- data %>%
+community_data_modified <- primary_data_modified %>%
  mutate(Community_Area = case_when(
     Community_Area %in% 1:15 ~ 1,
     Community_Area %in% 16:30 ~ 2,
@@ -209,14 +202,13 @@ data <- data %>%
     TRUE ~ Community_Area
   ))
 
-data <- data %>% filter(!(Community_Area <= 0 | Community_Area > 5))
-
+community_data_modified <- community_data_modified %>% filter(!(Community_Area <= 0 | Community_Area > 5))
 ```
 
--   Визуализација вредности обележја *Community_Area* након трансформације.
+-   Визуализација вредности обележја *Community_Area* након трансформације:
 
 ```{r eval=T, results='hold'}
-community_area_counts <- data %>%
+community_area_counts <- community_data_modified %>%
   group_by(Community_Area) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
@@ -226,7 +218,7 @@ print(community_area_counts)
 
 ```{r eval=T, results='hold'}
 ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
-  geom_bar(stat = "identity", color = "black", fill = "grey") +
+  geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Frequency of Community Area",
        x = "Community Area",
        y = "Count") +
@@ -237,10 +229,21 @@ ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
--   Визуализација вредности обележја *Arrest*.
+##IZMENITI
+```{r eval=T, results='hold'}
+ggplot(data, aes(x = community_area_counts, y = primary_type_counts_1, color = primary_type)) +
+  geom_point() + # Dodaje tačke
+  geom_smooth(method = "lm", se = FALSE) + # Dodaje liniju trenda
+  labs(title = "Scatter plot sa linijom trenda",
+       x = "Community Area",
+       y = "Broj slučajeva kriminala") +
+  theme_minimal() # Podešava temu grafikona
+```
+
+4.  Визуализација вредности обележја *Arrest*.
 
 ```{r eval=T, results='hold'}
-arrest_count <- data %>%
+arrest_count <- community_data_modified %>%
   group_by(Arrest) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
@@ -248,7 +251,15 @@ arrest_count <- data %>%
 print(arrest_count)
 ```
 
+-   Анализом следећег графа примећује се да је велики број случајева нерешен, што је заиста забрињавајуће.
+
 ```{r eval=T, results='hold'}
+community_data_modified <- community_data_modified %>%
+  mutate(Arrest = case_when(
+    Arrest == TRUE ~ 1,
+    TRUE ~ 0
+  ))
+
 ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
   geom_bar(stat = "identity", color = "black") +
   coord_polar(theta = "y") +
@@ -260,5 +271,90 @@ ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
         plot.title = element_text(hjust = 0.5))
 ```
 
+## Класификација
+Класификација је извршена на
+
+## 
 ```{r eval=T, results='hold'}
+prepared_data <- community_data_modified %>%
+  select(Community_Area, Domestic, Primary_Type, Beat, Ward, Arrest)
+
+data.split <- sdf_random_split(prepared_data, training = 0.80, test = 0.20, seed = 123)
+
+data.training <- data.split$training
+data.test <- data.split$test
+```
+
+##LOGISTICKA REGRESIJA
+```{r eval=T, results='hold'}
+pipeline_1 <- sc %>% 
+  ml_pipeline() %>%
+  ft_r_formula(Arrest ~ .) %>%
+  ml_logistic_regression()
+
+params_1 <- list(
+  logistic_regression = list(reg_param = c(0, 0.01, 0.1, 1))
+)
+
+evaluator_1 <- ml_binary_classification_evaluator(x = sc, metricName = "areaUnderROC")
+
+cross_v <- ml_cross_validator(
+  x = sc, 
+  estimator = pipeline_1,
+  estimator_param_maps = params_1,
+  evaluator = evaluator_1,
+  num_folds = 5
+)
+
+test_models <- ml_fit(
+  x = cross_v,
+  dataset = data.split$training
+)
+
+cv_metrics <- ml_validation_metrics(test_models)
+
+print(cv_metrics)
+
+cv_metrics %>% 
+  ggplot(aes(reg_param_1, areaUnderROC)) + 
+  geom_line() + 
+  geom_smooth()
+
+lr_model <- ml_logistic_regression(
+  data.split$training,
+  Arrest ~ .,
+  reg_param = 0.01
+)
+
+lmodel %>% 
+  ml_predict(data.split$test) %>% 
+  ml_metrics_binary()
+```
+
+```{r eval=T, results='hold'}
+#print(head(data.training))
+
+model <- ml_logistic_regression(x = data.training, 
+                                formula = Arrest ~ 
+                                  Community_Area + 
+                                  Primary_Type + 
+                                  Domestic + 
+                                  Beat, 
+                                family = "binomial", 
+                                max_iter = 10, 
+                                threshold = 0.5)
+```
+
+```{r eval=T, results='hold'}
+#print(model.accuracies)
+
+model_predictions <- ml_predict(model, data.test)
+print(model_predictions)
+
+evaluation <- ml_binary_classification_evaluator(model_predictions,
+                                                 label_col = "label",
+                                                 raw_prediction_col = "prediction")
+
+print(evaluation)
+
 ```

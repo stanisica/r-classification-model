@@ -2,7 +2,9 @@
 title: "Анализа криминалних дешавања на територији града Чикага"
 author: "Andrija Stanišić"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document:
+    warning: false
 ---
 
 ## Увод
@@ -87,7 +89,7 @@ data = spark_read_csv(sc,
                       header = TRUE, 
                       memory = TRUE)
 
-#print(head(data))
+print(head(data))
 ```
 
 ## Припрема скупа података за даљу анализу
@@ -108,8 +110,7 @@ primary_type_counts <- data_clean %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-
-#print(primary_type_counts)
+print(primary_type_counts)
 ```
 
 ```{r eval=T, results='hold'}
@@ -151,7 +152,7 @@ primary_type_counts_1 <- primary_data_modified %>%
   arrange(desc(count)) %>%
   collect()
 
-#print(primary_type_counts_1)
+print(primary_type_counts_1)
 ```
 
 ```{r eval=T, results='hold'}
@@ -180,10 +181,7 @@ print(location_desc_counts)
 ```
 
 ```{r eval=T, results='hold'}
-location_desc_modified <- location_desc_counts %>%
-  filter((count >= 5000))
-
-ggplot(location_desc_modified, aes(x = reorder(Location_Description, -count), y = count)) +
+ggplot(location_desc_counts, aes(x = reorder(Location_Description, -count), y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Распоред локација на којима се злочин одиграо",
        x = "Опис локације",
@@ -225,15 +223,17 @@ location_desc_counts_1 <- location_data_modified %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-#print(location_desc_counts_1)
+print(location_desc_counts_1)
+```
 
-ggplot(location_desc_counts_1, aes(x = reorder(Location_Description, -count), y = count)) +
+```{r eval=T, results='hold'}
+ggplot(location_desc_counts_1, aes(x = Location_Description, y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Варијабилност локација на којима се злочин одиграо",
        x = "Опис локације",
        y = "Учесталост") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 2),
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 3),
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(margin = margin(t = 20)),
         axis.title.y = element_text(margin = margin(r=20)))
@@ -248,7 +248,7 @@ community_area_counts <- location_data_modified %>%
   arrange(desc(count)) %>%
   collect()
 
-#print(community_area_counts)
+print(community_area_counts)
 ```
 
 ```{r eval=T, results='hold'}
@@ -289,7 +289,7 @@ community_area_counts <- community_data_modified %>%
   arrange(desc(count)) %>%
   collect()
 
-#print(community_area_counts)
+print(community_area_counts)
 ```
 
 ```{r eval=T, results='hold'}
@@ -373,6 +373,17 @@ ggplot(arrest_ratio, aes(x = Primary_Type, y = Arrest_True + Arrest_False, fill 
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
+-   Визуализација односа криминалних дела који спадају у групу :
+```{r eval=T, results='hold'}
+domestic_arrest_data <- community_data_modified  %>%
+  select(Domestic, Arrest)
+
+ggplot(domestic_arrest_data, aes(x = Domestic, y = Arrest)) +
+  geom_point() +
+  labs(title = "Odnos između Domestic i Arrest",
+       x = "Domestic", y = "Arrest")
+```
+
 ## Класификација
 
 Класификација је заснована на предвиђању реализације хапшења осумљиченог, на основу осталих релевантних обележја. Дакле, информација о хапшењу представља циљно обележје. Претходна анализа идентификовала је проблем небалансираности података ове колоне, па га је најпре неопходно решити. За решавање проблема одабрана је матрица цене која омогућава прилагођавање цене грешке класификације. Идеја је смањити цену грешке за мањину, односно ухапшене, како би модел био склонији идентификацији те класе. Класификација је реализована помоћу три различита алгоритма: *логистичка регресија*, *стабло одлучивања* и *метод случајних шума*. Додатно, на крају секције пружен је и приказ односа перформанси ових алгоритама.
@@ -436,15 +447,16 @@ logreg_test_models <- ml_fit(
 
 logreg_metrics <- ml_validation_metrics(logreg_test_models)
 print(logreg_metrics)
+```
 
-logreg_metrics %>% 
+```{r eval=T, results='hold'}
+  logreg_metrics %>% 
   ggplot(aes(reg_param_1, areaUnderROC)) + 
   geom_line() + 
   geom_smooth()
-
 ```
 
-- Анализом добијених резултата може се утврдити да перформансе модела расту са падом вредности регулационог параметра. Дакле, минимална вредност овог параметра ће дати оптимално решење. Резултат је приказан у наставку.
+-   Анализом добијених резултата може се утврдити да перформансе модела расту са падом вредности регулационог параметра. Дакле, минимална вредност овог параметра ће дати оптимално решење. Резултат је приказан у наставку.
 
 ```{r eval=T, results='hold'}
 logreg_model <- ml_logistic_regression(
@@ -461,9 +473,11 @@ logreg_model <- ml_logistic_regression(
   weight_col = "Weight"
 )
 
-logreg_model %>%
+logreg_result <- logreg_model %>%
   ml_predict(data.test) %>%
   ml_metrics_binary()
+
+print(logreg_result)
 ```
 
 ### 2. Стаблo одлучивања:
@@ -500,12 +514,10 @@ dtree_test_models <- ml_fit(
   dataset = data.training,
 )
 
-dtree_metrics <- ml_validation_metrics(dtree_test_models)
-print(dtree_metrics)
-
+ml_validation_metrics(dtree_test_models)
 ```
 
-- Анализом добијених резултата може се утврдити да перформансе модела расту са порастом вредности регулационог параметра. Дакле, максимална вредност овог параметра ће дати оптимално решење. Резултат обучавања и евалуције модела са одговарајућим параметром, приказан је у наставку.
+-   Анализом добијених резултата може се утврдити да перформансе модела расту са порастом вредности регулационог параметра. Дакле, максимална вредност овог параметра ће дати оптимално решење. Резултат обучавања и евалуције модела са одговарајућим параметром, приказан је у наставку.
 
 ```{r eval=T, results='hold'}
 dtree_model <- ml_decision_tree_classifier(
@@ -559,10 +571,10 @@ randf__test_models <- ml_fit(
   dataset = data.training,
 )
 
-randf_metrics <- ml_validation_metrics(randf_test_models)
-print(randf_metrics)
+ml_validation_metrics(randf_test_models)
 ```
-- Анализом добијених резултата може се утврдити да је модел најперформантнији када је број стабала 25. Дакле, у наставку је извршено тренирање и евалуација модела са оптималним параметром.
+
+-   Анализом добијених резултата може се утврдити да је модел најперформантнији када је број стабала 25. Дакле, у наставку је извршено тренирање и евалуација модела са оптималним параметром.
 
 ```{r eval=T, results='hold'}
 randf_model <- ml_random_forest_classifier(
@@ -583,3 +595,31 @@ randf_result <- randf_model %>%
   ml_metrics_binary()
 print(randf_result)
 ```
+
+## Упоредна анализа класификационих модела
+
+На следећем графику приказана је тачност алгоритама који су развијени применом различитих метода бинарне класификације. За евалуацију добијених класификационих модела коришћена је AUC-ROC (*Area Under the Reciver Operating Characteristic Curve*) крива. Ова крива представља однос између истинито позитивних и лажно позитивних предикција, где већа вредност указује на бољу способност модела да разликује између позитивних и негативних инстанци. 
+
+```{r eval=T, results='hold'}
+algorithm_accuracy <- data.frame(
+  Algorithm = c("Logistic Regression", "Random Forest", "Decision Tree"),
+  Accuracy = c(logreg_result[1,]$.estimate, randf_result[1,]$.estimate, dtree_result[1,]$.estimate)
+)
+
+ggplot(algorithm_accuracy, aes(x = Algorithm, y = Accuracy, group = 1)) +
+  geom_line(color = "#595959") +
+  geom_point(size = 3, color = "black") +
+  labs(title = "Упоредна анализа перформанси различитих класификационих модела",
+       x = "Алгоритам",
+       y = "Прецизност") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)))
+```
+
+На основу анализе добијених резултата, може се закључити да се метода логистичке регресије показала као најперформантнија у контексту предикције хапшења осумљичених. Ова предикција се темељи на параметрима као што су врста криминалног дела, релевантне информације о локацији, година итд. Са друге стране, метода стабла одлучивања показала се најмање ефикасном. На крају, битно је напоменути да одабир параметра знатно утиче на перформансе модела. Последично, могуће је унапредити перформансе сваког модела додатним подешавањем параметара и трансформацијом података. 
+
+
+

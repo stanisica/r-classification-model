@@ -7,7 +7,7 @@ output: html_document
 
 ## Увод
 
-Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података. Конкретно, класификација је извршена на основу информација о успешно реализованим хапшењима починиоца кривичног дела.
+Централна идеја истраживања је анализа скупа података који представља пријављене инциденте у граду Чикагу. Подаци су прикупљани од 2001. до почетка 2024. године. Циљ је применити технике класификације и кластеризације ради идентификације интерних образаца у овом скупу података.
 
 Скуп података је величине 1.9 гигабајта и садржи следећа обележја:
 
@@ -65,8 +65,6 @@ knitr::opts_knit$set(root.dir = "/home/astanisic/FTN/r-classification-model")
 ```{r eval=T, echo=F, results='hide', include=FALSE}
 Sys.setlocale("LC_CTYPE", "sr_RS.UTF-8")
 
-#options(java.parameters = "-Xmx8g")
-
 library(sparklyr)
 library(ggplot2)
 library(dbplot)
@@ -96,7 +94,7 @@ print(head(data))
 
 Како би анализа података била ефикасна, неопходно је трансформисати почетни скуп података. Иницијална трансформација реализована је из више фаза:
 
-1.  Идентификација и уклањање непостојећих вредности из колона од интереса:
+1.  Идентификација и уклањање непостојећих вредности:
 
 ```{r eval=T, results='hold'}
 data_clean <- data %>% na.omit()
@@ -117,6 +115,30 @@ print(primary_type_counts)
 ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
   labs(title = "Frequency of Primary Type",
+       x = "Primary Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+### 
+
+```{r eval=T, results='hold'}
+location_desc_counts <- data_clean %>%
+  group_by(Location_Description) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+print(location_desc_counts)
+```
+
+```{r eval=T, results='hold'}
+ggplot(location_desc_counts, aes(x = reorder(Location_Description, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "#595959") +
+  labs(title = "Frequency of Location Descripiton",
        x = "Primary Type",
        y = "Count") +
   theme_minimal() +
@@ -229,18 +251,27 @@ ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-##IZMENITI
+-   Визуализација стопе криминала по административној јединици:
+
 ```{r eval=T, results='hold'}
-ggplot(data, aes(x = community_area_counts, y = primary_type_counts_1, color = primary_type)) +
-  geom_point() + # Dodaje tačke
-  geom_smooth(method = "lm", se = FALSE) + # Dodaje liniju trenda
-  labs(title = "Scatter plot sa linijom trenda",
-       x = "Community Area",
-       y = "Broj slučajeva kriminala") +
-  theme_minimal() # Podešava temu grafikona
+community_crime_rates <- community_data_modified %>%
+  group_by(Community_Area) %>%
+  summarise(Num_Crimes = n())
+
+print(community_crime_rates)
+
+community_crime_rates <- community_crime_rates %>%
+  mutate(Crime_Rate = Num_Crimes / sum(Num_Crimes))
+
+ggplot(data = community_crime_rates, aes(x = Community_Area, y = Crime_Rate)) +
+  geom_point() +
+  geom_text(aes(label = round(Crime_Rate, 3)), vjust = -0.5) +
+  geom_line() +
+  labs(x = "Административна јединица", y = "Стопа криминала", title = "Стопа криминала агрегираних административних јединица") +
+  theme_minimal() 
 ```
 
-4.  Визуализација вредности обележја *Arrest*.
+4.  Визуализација и трансформација вредности обележја *Arrest*.
 
 ```{r eval=T, results='hold'}
 arrest_count <- community_data_modified %>%
@@ -251,7 +282,7 @@ arrest_count <- community_data_modified %>%
 print(arrest_count)
 ```
 
--   Анализом следећег графа примећује се да је велики број случајева нерешен, што је заиста забрињавајуће.
+-   Следећи граф јасно приказује велики број нерешених случајева. Конкретно, однос је 3:1, дакле два од три осумљичена не буду процесуирана. У контексту класификације, ова небалансираност представља проблем. Решење проблема дато је у наредној секцији. Додатно, ради побољшања перформанси даље анализе, вредности *Arrest* колоне конвертоване су из логичког у нумерички тип.
 
 ```{r eval=T, results='hold'}
 community_data_modified <- community_data_modified %>%
@@ -260,11 +291,17 @@ community_data_modified <- community_data_modified %>%
     TRUE ~ 0
   ))
 
+community_data_modified <- community_data_modified %>%
+  mutate(Domestic = case_when(
+    Domestic == TRUE ~ 1,
+    TRUE ~ 0
+  ))
+
 ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
-  geom_bar(stat = "identity", color = "black") +
+  geom_bar(stat = "identity", color = "#595959") +
   coord_polar(theta = "y") +
-  labs(title = "Pie Chart of Arrest",
-       fill = "Arrest",
+  labs(title = "Oднос приведених и неприведених лица",
+       fill = "Приведени",
        y = NULL) +
   theme_minimal() +
   theme(legend.position = "right",
@@ -272,89 +309,175 @@ ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
 ```
 
 ## Класификација
-Класификација је извршена на
 
-## 
+Класификација је заснована на предвиђању реализације хапшења осумљиченог, на основу осталих релевантних обележја. Дакле, информација о хапшењу представља циљно обележје. Претходна анализа идентификовала је проблем небалансираности података ове колоне, па га је најпре неопходно решити. За решавање проблема одабрана је матрица цене која омогућава прилагођавање цене грешке класификације. Идеја је смањити цену грешке за мањину, односно ухапшене, како би модел био склонији идентификацији те класе. Класификација је реализована помоћу три различита алгоритма: *логистичка регресија*, *стабло одлучивања* и *метод случајних шума*. Додатно, на крају секције пружен је и приказ односа перформанси ових алгоритама.
+
+-   Формирање матрице цене и финална трансформација података пре обучавања модела.
+
 ```{r eval=T, results='hold'}
-prepared_data <- community_data_modified %>%
-  select(Community_Area, Domestic, Primary_Type, Beat, Ward, Arrest)
+arrest_cost_matrix <- matrix(c(1, 1, 3, 1), nrow = 2)
 
-data.split <- sdf_random_split(prepared_data, training = 0.80, test = 0.20, seed = 123)
+weighted_data <- community_data_modified %>%
+   mutate(Weight = case_when(
+    Arrest > 0.5 ~ 1.7,
+    TRUE ~ 1
+  ))
+
+prepared_data <- weighted_data %>%
+  select(Community_Area, Domestic, Primary_Type, Beat, Ward, Weight, Arrest, Year, IUCR, Location_Description, FBI_Code)
+
+data.split <- sdf_random_split(prepared_data, training = 0.75, test = 0.25, seed = 123)
 
 data.training <- data.split$training
 data.test <- data.split$test
 ```
 
-##LOGISTICKA REGRESIJA
+Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података одређен је оптималан параметар, који се затим користи за финалну евалуацију модела.
+
+### 1. Метод логистичке регресије:
+
 ```{r eval=T, results='hold'}
-pipeline_1 <- sc %>% 
+logreg_pipeline <- sc %>% 
   ml_pipeline() %>%
-  ft_r_formula(Arrest ~ .) %>%
-  ml_logistic_regression()
+  ft_r_formula(Arrest ~ Community_Area + 
+                 Primary_Type + 
+                 Domestic + 
+                 Beat + 
+                 Ward + 
+                 IUCR +
+                 Year) %>%
+  ml_logistic_regression(weight_col = "Weight")
 
-params_1 <- list(
-  logistic_regression = list(reg_param = c(0, 0.01, 0.1, 1))
+logreg_params <- list(
+  logistic_regression = list(reg_param = c(0.01, 0.6, 1.1))
 )
 
-evaluator_1 <- ml_binary_classification_evaluator(x = sc, metricName = "areaUnderROC")
+logreg_evaluator <- ml_binary_classification_evaluator(x = sc, metricName = "f1")
 
-cross_v <- ml_cross_validator(
+logreg_cross_v <- ml_cross_validator(
   x = sc, 
-  estimator = pipeline_1,
-  estimator_param_maps = params_1,
-  evaluator = evaluator_1,
-  num_folds = 5
+  estimator = logreg_pipeline,
+  estimator_param_maps = logreg_params,
+  evaluator = logreg_evaluator,
+  num_folds = 6,
 )
 
-test_models <- ml_fit(
-  x = cross_v,
-  dataset = data.split$training
+logreg_test_models <- ml_fit(
+  x = logreg_cross_v,
+  dataset = data.training,
 )
 
-cv_metrics <- ml_validation_metrics(test_models)
+logreg_metrics <- ml_validation_metrics(logreg_test_models)
+print(logreg_metrics)
 
-print(cv_metrics)
-
-cv_metrics %>% 
+logreg_metrics %>% 
   ggplot(aes(reg_param_1, areaUnderROC)) + 
   geom_line() + 
   geom_smooth()
 
-lr_model <- ml_logistic_regression(
-  data.split$training,
-  Arrest ~ .,
+```
+
+```{r eval=T, results='hold'}
+logreg_model <- ml_logistic_regression(
+  data.training,
+  Arrest ~ Community_Area + 
+                 Domestic + 
+                 Primary_Type + 
+                 Beat + 
+                 Year,
   reg_param = 0.01
 )
 
-lmodel %>% 
-  ml_predict(data.split$test) %>% 
+lr_model %>%
+  ml_predict(data.split$test) %>%
   ml_metrics_binary()
 ```
 
-```{r eval=T, results='hold'}
-#print(head(data.training))
+### 2. Стаблo одлучивања:
 
-model <- ml_logistic_regression(x = data.training, 
-                                formula = Arrest ~ 
-                                  Community_Area + 
-                                  Primary_Type + 
-                                  Domestic + 
-                                  Beat, 
-                                family = "binomial", 
-                                max_iter = 10, 
-                                threshold = 0.5)
+```{r eval=T, results='hold'}
+dtree_pipeline <- sc %>% 
+  ml_pipeline() %>%
+  ft_r_formula(Arrest ~ Community_Area + 
+                 Domestic + 
+                 Primary_Type + 
+                 Year) %>%
+  ml_decision_tree_classifier()
+
+dtree_params <- list(
+  decision_tree = list(max_depth = c(3, 5, 7))
+)
+
+dtree_evaluator <- ml_binary_classification_evaluator(x = sc, metricName = "f1")
+
+dtree_cross_v <- ml_cross_validator(
+  x = sc, 
+  estimator = dtree_pipeline,
+  estimator_param_maps = dtree_params,
+  evaluator = dtree_evaluator,
+  num_folds = 10,
+)
+
+dtree_test_models <- ml_fit(
+  x = dtree_cross_v,
+  dataset = data.training,
+)
+
+dtree_metrics <- ml_validation_metrics(dtree_test_models)
+print(dtree_metrics)
+
 ```
 
 ```{r eval=T, results='hold'}
-#print(model.accuracies)
+dtree_metrics %>% 
+  ggplot(aes(max_depth_1, f1)) + 
+  geom_line() + 
+  geom_smooth()
 
-model_predictions <- ml_predict(model, data.test)
-print(model_predictions)
+```
 
-evaluation <- ml_binary_classification_evaluator(model_predictions,
-                                                 label_col = "label",
-                                                 raw_prediction_col = "prediction")
+### 3. Метод случајних шума:
 
-print(evaluation)
+```{r eval=T, results='hold'}
+randf_pipeline <- sc %>% 
+  ml_pipeline() %>%
+  ft_r_formula(Arrest ~ Community_Area + 
+                 Domestic + 
+                 Primary_Type + 
+                 Beat + 
+                 Weight +
+                 Year) %>%
+  ml_decision_tree_classifier()
+
+randf_params <- list(
+  random_forest_classifier = list(num_trees = c(10, 30, 50))
+)
+
+
+randf_evaluator <- ml_binary_classification_evaluator(x = sc, metricName = "accuracy")
+
+randf_cross_v <- ml_cross_validator(
+  x = sc, 
+  estimator = randf_pipeline,
+  estimator_param_maps = randf_params,
+  evaluator = randf_evaluator,
+  num_folds = 10,
+)
+
+randf__test_models <- ml_fit(
+  x = randf__cross_v,
+  dataset = data.training,
+)
+
+randf_metrics <- ml_validation_metrics(randf_test_models)
+print(randf_metrics)
+
+```
+
+```{r eval=T, results='hold'}
+randf_metrics %>% 
+  ggplot(aes(max_depth_1, accuracy)) + 
+  geom_line() + 
+  geom_smooth()
 
 ```

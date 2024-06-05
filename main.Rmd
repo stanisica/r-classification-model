@@ -305,7 +305,7 @@ ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-4.  Визуализација и трансформација вредности обележја *Arrest*.
+5.  Визуализација и трансформација вредности обележја *Arrest*.
 
 ```{r eval=T, results='hold'}
 arrest_count <- community_data_modified %>%
@@ -344,6 +344,8 @@ ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
   theme(legend.position = "right",
         plot.title = element_text(hjust = 0.5))
 ```
+
+## Однос примарног и предикторских обележја
 
 -   Визуализација стопе криминала по административној јединици:
 
@@ -396,7 +398,7 @@ data.training <- data.split$training
 data.test <- data.split$test
 ```
 
-Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података идентификована је оптимална вредност параметара, која се затим користи за финално обучавање и евалуацију модела.
+Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података одређен је оптималан параметар, који се затим користи за финалну евалуацију модела.
 
 ### 1. Метод логистичке регресије:
 
@@ -442,24 +444,18 @@ logreg_metrics %>%
 
 ```
 
-- Анализом графа утврђено је да је модел перформантнији за мање вредности конфигурационог параметра. Дакле, коначна евалуација се спроводи на моделу који је обучаван са одговарајућим параметром.
-
 ```{r eval=T, results='hold'}
 logreg_model <- ml_logistic_regression(
   data.training,
   Arrest ~ Community_Area + 
-                 Primary_Type + 
                  Domestic + 
+                 Primary_Type + 
                  Beat + 
-                 Ward + 
-                 District +
-                 Location_Description + 
                  Year,
-  reg_param = 0.01,
-  weight_col = "Weight"
+  reg_param = 0.01
 )
 
-logreg_model %>%
+lr_model %>%
   ml_predict(data.split$test) %>%
   ml_metrics_binary()
 ```
@@ -470,12 +466,8 @@ logreg_model %>%
 dtree_pipeline <- sc %>% 
   ml_pipeline() %>%
   ft_r_formula(Arrest ~ Community_Area + 
-                 Primary_Type + 
                  Domestic + 
-                 Beat + 
-                 Ward + 
-                 District +
-                 Location_Description + 
+                 Primary_Type + 
                  Year) %>%
   ml_decision_tree_classifier()
 

@@ -87,7 +87,7 @@ data = spark_read_csv(sc,
                       header = TRUE, 
                       memory = TRUE)
 
-print(head(data))
+#print(head(data))
 ```
 
 ## Припрема скупа података за даљу анализу
@@ -108,39 +108,16 @@ primary_type_counts <- data_clean %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-print(primary_type_counts)
+
+#print(primary_type_counts)
 ```
 
 ```{r eval=T, results='hold'}
 ggplot(primary_type_counts, aes(x = reorder(Primary_Type, -count), y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
-  labs(title = "Frequency of Primary Type",
-       x = "Primary Type",
-       y = "Count") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(margin = margin(t = 20)),
-        axis.title.y = element_text(margin = margin(r=20)))
-```
-
-### 
-
-```{r eval=T, results='hold'}
-location_desc_counts <- data_clean %>%
-  group_by(Location_Description) %>%
-  summarise(count = n()) %>%
-  arrange(desc(count)) %>%
-  collect()
-print(location_desc_counts)
-```
-
-```{r eval=T, results='hold'}
-ggplot(location_desc_counts, aes(x = reorder(Location_Description, -count), y = count)) +
-  geom_bar(stat = "identity", fill = "#595959") +
-  labs(title = "Frequency of Location Descripiton",
-       x = "Primary Type",
-       y = "Count") +
+  labs(title = "Иницијална учесталост типова криминалних дела",
+       x = "Тип криминалног дела",
+       y = "Учесталост") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 5),
         plot.title = element_text(hjust = 0.5),
@@ -173,15 +150,16 @@ primary_type_counts_1 <- primary_data_modified %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-print(primary_type_counts_1)
+
+#print(primary_type_counts_1)
 ```
 
 ```{r eval=T, results='hold'}
 ggplot(primary_type_counts_1, aes(x = reorder(Primary_Type, -count), y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
-  labs(title = "Frequency of Community Area",
-       x = "Community Area",
-       y = "Count") +
+  labs(title = "Учесталост трансформисаних типова криминалних дела",
+       x = "Тип криминалног дела",
+       y = "Учесталост") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
         plot.title = element_text(hjust = 0.5),
@@ -189,32 +167,107 @@ ggplot(primary_type_counts_1, aes(x = reorder(Primary_Type, -count), y = count))
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-3.  Идентификација и вузуaлизација скупа вредности обележја *Community_Area*:
+3.  Идентификација и визуализација скупа вредности обележја **Location_Description**:
 
 ```{r eval=T, results='hold'}
-community_area_counts <- primary_data_modified %>%
+location_desc_counts <- primary_data_modified %>%
+  group_by(Location_Description) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+
+print(location_desc_counts)
+```
+
+```{r eval=T, results='hold'}
+location_desc_modified <- location_desc_counts %>%
+  filter((count >= 5000))
+
+ggplot(location_desc_modified, aes(x = reorder(Location_Description, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "#595959") +
+  labs(title = "Распоред локација на којима се злочин одиграо",
+       x = "Опис локације",
+       y = "Учесталост") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 4),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+-   Као и код претходног обележја, неопходно је агрегирати скуп вредности ради ефикасније анализе. Конкретно, избачени су сви случајеви који су се десили на специфичним локацијама. У овом конктексту, специфичне локације су оне које имају мање од 5000 понављања. Остатак локација груписан је у кластере по сличностима у фреквенцији.
+
+```{r eval=T, results='hold'}
+locations_to_keep <- primary_data_modified %>%
+  count(Location_Description) %>%
+  filter(n >= 5000) %>%
+  pull(Location_Description)
+
+location_data_modified <- primary_data_modified %>%
+  filter(Location_Description %in% locations_to_keep)
+```
+
+```{r eval=T, results='hold'}
+primary_data_modified <- primary_data_modified %>%
+  mutate(Primary_Type = case_when(
+    Primary_Type %in% c("BATTERY", "ASSAULT", "ROBBERY", "WEAPONS VIOLATION", "OFFENSE INVOLVING CHILDREN", "PUBLIC PEACE VIOLATION") ~ "VIOLENT_CRIME",
+    Primary_Type %in% c("THEFT", "BURGLARY", "MOTOR VEHICLE THEFT", "CRIMINAL TRESPASS") ~ "PROPERTY_CRIME",
+    Primary_Type %in% c("NARCOTICS", "CRIMINAL DAMAGE", "OTHER OFFENSE", "DECEPTIVE PRACTICE", "PROSTITUTION") ~ "OTHER",
+    TRUE ~ Primary_Type
+  ))
+```
+
+-   Визуализација скупа вредности обележја *Location_Description* након трансформације:
+
+```{r eval=T, results='hold'}
+location_desc_counts_1 <- location_data_modified %>%
+  group_by(Location_Description) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  collect()
+#print(location_desc_counts_1)
+
+ggplot(location_desc_counts_1, aes(x = reorder(Location_Description, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "#595959") +
+  labs(title = "Варијабилност локација на којима се злочин одиграо",
+       x = "Опис локације",
+       y = "Учесталост") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 2),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r=20)))
+```
+
+4.  Идентификација и вузуaлизација скупа вредности обележја *Community_Area*:
+
+```{r eval=T, results='hold'}
+community_area_counts <- location_data_modified %>%
   group_by(Community_Area) %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-print(community_area_counts)
+
+#print(community_area_counts)
 ```
 
 ```{r eval=T, results='hold'}
-dbplot_histogram(primary_data_modified, x = Community_Area, binwidth = 1) +
-  labs(title = "Histogram Community Area",
-       x = "Community Area",
-       y = "Frequency") +
+ggplot(community_area_counts, aes(x = Community_Area, y = count)) +
+  geom_bar(stat = "identity", fill = "#595959") +
+  labs(title = "Учесталост појава различитих административних јединица",
+       x = "Ознака административне јединице",
+       y = "Учесталост") +
   theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5),
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(margin = margin(t = 20)),
-        axis.title.y = element_text(margin = margin(r=20)))
+        axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
 -   Како би анализа била једноставнија, административне јединице су груписане у пет група са приближно истим бројем ентитета. Додатно, анализом секундарних извора утврђено је да у Чикагу постоје административне јединице које су нумерисане од 1 до 77. Дакле, неопходно је уклонити редове чија вредност не припада овом интервалу.
 
 ```{r eval=T, results='hold'}
-community_data_modified <- primary_data_modified %>%
+community_data_modified <- location_data_modified %>%
  mutate(Community_Area = case_when(
     Community_Area %in% 1:15 ~ 1,
     Community_Area %in% 16:30 ~ 2,
@@ -235,40 +288,21 @@ community_area_counts <- community_data_modified %>%
   summarise(count = n()) %>%
   arrange(desc(count)) %>%
   collect()
-print(community_area_counts)
+
+#print(community_area_counts)
 ```
 
 ```{r eval=T, results='hold'}
 ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
   geom_bar(stat = "identity", fill = "#595959") +
-  labs(title = "Frequency of Community Area",
-       x = "Community Area",
-       y = "Count") +
+  labs(title = "Учесталост трансформисаних административних јединица",
+       x = "Ознака административне јединице",
+       y = "Учесталост") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(margin = margin(t = 20)),
         axis.title.y = element_text(margin = margin(r = 20)))
-```
-
--   Визуализација стопе криминала по административној јединици:
-
-```{r eval=T, results='hold'}
-community_crime_rates <- community_data_modified %>%
-  group_by(Community_Area) %>%
-  summarise(Num_Crimes = n())
-
-print(community_crime_rates)
-
-community_crime_rates <- community_crime_rates %>%
-  mutate(Crime_Rate = Num_Crimes / sum(Num_Crimes))
-
-ggplot(data = community_crime_rates, aes(x = Community_Area, y = Crime_Rate)) +
-  geom_point() +
-  geom_text(aes(label = round(Crime_Rate, 3)), vjust = -0.5) +
-  geom_line() +
-  labs(x = "Административна јединица", y = "Стопа криминала", title = "Стопа криминала агрегираних административних јединица") +
-  theme_minimal() 
 ```
 
 4.  Визуализација и трансформација вредности обележја *Arrest*.
@@ -282,7 +316,7 @@ arrest_count <- community_data_modified %>%
 print(arrest_count)
 ```
 
--   Следећи граф јасно приказује велики број нерешених случајева. Конкретно, однос је 3:1, дакле два од три осумљичена не буду процесуирана. У контексту класификације, ова небалансираност представља проблем. Решење проблема дато је у наредној секцији. Додатно, ради побољшања перформанси даље анализе, вредности *Arrest* колоне конвертоване су из логичког у нумерички тип.
+-   Следећи граф јасно приказује велики број нерешених случајева. Конкретно, однос је скоро 3:1, дакле два од три осумљичена не буду процесуирана. У контексту класификације, ова небалансираност представља проблем. Решење проблема дато је у наредној секцији. Додатно, ради побољшања перформанси даље анализе, вредности *Arrest* колоне конвертоване су из логичког у нумерички тип.
 
 ```{r eval=T, results='hold'}
 community_data_modified <- community_data_modified %>%
@@ -297,15 +331,44 @@ community_data_modified <- community_data_modified %>%
     TRUE ~ 0
   ))
 
+```
+
+```{r eval=T, results='hold'}
 ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
   geom_bar(stat = "identity", color = "#595959") +
   coord_polar(theta = "y") +
+  scale_fill_manual(values = c("#D6262B", "#3E7C34"), name = "Приведени", labels = c("Не", "Да")) +
   labs(title = "Oднос приведених и неприведених лица",
-       fill = "Приведени",
        y = NULL) +
   theme_minimal() +
   theme(legend.position = "right",
         plot.title = element_text(hjust = 0.5))
+```
+
+-   Визуализација стопе криминала по административној јединици:
+
+```{r eval=T, results='hold'}
+arrest_ratio <- community_data_modified %>%
+  group_by(Primary_Type, Arrest) %>%
+  summarise(Arrest_True = sum(ifelse(Arrest == 1, 1, 0)),
+            Arrest_False = sum(ifelse(Arrest == 0, 1, 0)),
+            .groups = "drop") %>%
+  mutate(Arrest_Percent = Arrest_True / (Arrest_True + Arrest_False) * 100)
+```
+
+```{r eval=T, results='hold'}
+ggplot(arrest_ratio, aes(x = Primary_Type, y = Arrest_True + Arrest_False, fill = factor(Arrest_Percent))) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_fill_manual(values = c("#D6262B", "#3E7C34"), name = "Приведени", labels = c("Не", "Да")) +
+  labs(title = "Однос приведених и неприведених починиоца различитих кривничних дела",
+       x = "Тип кривичног дела",
+       y = "Однос",
+       fill = "Статус хапшења") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
 ## Класификација
@@ -315,24 +378,25 @@ ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
 -   Формирање матрице цене и финална трансформација података пре обучавања модела.
 
 ```{r eval=T, results='hold'}
-arrest_cost_matrix <- matrix(c(1, 1, 3, 1), nrow = 2)
+arrest_cost_matrix <- matrix(c(1, 3, 1, 1), nrow = 2)
+a <- arrest_cost_matrix[2,1]
+b <- arrest_cost_matrix[1,1]
 
 weighted_data <- community_data_modified %>%
-   mutate(Weight = case_when(
-    Arrest > 0.5 ~ 1.7,
-    TRUE ~ 1
-  ))
+   mutate(Weight = ifelse(Arrest == 1, a, b)
+  )
 
 prepared_data <- weighted_data %>%
-  select(Community_Area, Domestic, Primary_Type, Beat, Ward, Weight, Arrest, Year, IUCR, Location_Description, FBI_Code)
+  select(Community_Area, Domestic, Primary_Type, Beat, Ward, District, Weight, Arrest, Year, Location_Description)
 
+print(prepared_data)
 data.split <- sdf_random_split(prepared_data, training = 0.75, test = 0.25, seed = 123)
 
 data.training <- data.split$training
 data.test <- data.split$test
 ```
 
-Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података одређен је оптималан параметар, који се затим користи за финалну евалуацију модела.
+Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података идентификована је оптимална вредност параметара, која се затим користи за финално обучавање и евалуацију модела.
 
 ### 1. Метод логистичке регресије:
 
@@ -344,7 +408,8 @@ logreg_pipeline <- sc %>%
                  Domestic + 
                  Beat + 
                  Ward + 
-                 IUCR +
+                 District +
+                 Location_Description + 
                  Year) %>%
   ml_logistic_regression(weight_col = "Weight")
 
@@ -377,18 +442,24 @@ logreg_metrics %>%
 
 ```
 
+- Анализом графа утврђено је да је модел перформантнији за мање вредности конфигурационог параметра. Дакле, коначна евалуација се спроводи на моделу који је обучаван са одговарајућим параметром.
+
 ```{r eval=T, results='hold'}
 logreg_model <- ml_logistic_regression(
   data.training,
   Arrest ~ Community_Area + 
-                 Domestic + 
                  Primary_Type + 
+                 Domestic + 
                  Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
                  Year,
-  reg_param = 0.01
+  reg_param = 0.01,
+  weight_col = "Weight"
 )
 
-lr_model %>%
+logreg_model %>%
   ml_predict(data.split$test) %>%
   ml_metrics_binary()
 ```
@@ -399,8 +470,12 @@ lr_model %>%
 dtree_pipeline <- sc %>% 
   ml_pipeline() %>%
   ft_r_formula(Arrest ~ Community_Area + 
-                 Domestic + 
                  Primary_Type + 
+                 Domestic + 
+                 Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
                  Year) %>%
   ml_decision_tree_classifier()
 

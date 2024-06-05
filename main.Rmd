@@ -398,7 +398,7 @@ data.training <- data.split$training
 data.test <- data.split$test
 ```
 
-Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података одређен је оптималан параметар, који се затим користи за финалну евалуацију модела.
+Процеси обучавања и евалуације модела, за сва три приступа класификацији, реализовани су помоћу низа аутоматских порука, односно *pipeline*-а. Иницијално се креира *pipeline* са одговарајућим позивом методе класификације, формулом која ће бити коришћена и додатним параметрима. Након тога следи обучавање модела са различитим параметрима. За евалуацију параметра користи се унакрсна валидација. Анализом добијених података идентификује се оптималан параметар, који се затим користи за финалну евалуацију модела.
 
 ### 1. Метод логистичке регресије:
 
@@ -444,19 +444,25 @@ logreg_metrics %>%
 
 ```
 
+- Анализом добијених резултата може се утврдити да перформансе модела расту са падом вредности регулационог параметра. Дакле, минимална вредност овог параметра ће дати оптимално решење. Резултат је приказан у наставку.
+
 ```{r eval=T, results='hold'}
 logreg_model <- ml_logistic_regression(
   data.training,
   Arrest ~ Community_Area + 
-                 Domestic + 
                  Primary_Type + 
+                 Domestic + 
                  Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
                  Year,
-  reg_param = 0.01
+  reg_param = 0.01,
+  weight_col = "Weight"
 )
 
-lr_model %>%
-  ml_predict(data.split$test) %>%
+logreg_model %>%
+  ml_predict(data.test) %>%
   ml_metrics_binary()
 ```
 
@@ -466,8 +472,12 @@ lr_model %>%
 dtree_pipeline <- sc %>% 
   ml_pipeline() %>%
   ft_r_formula(Arrest ~ Community_Area + 
-                 Domestic + 
                  Primary_Type + 
+                 Domestic + 
+                 Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
                  Year) %>%
   ml_decision_tree_classifier()
 
@@ -495,12 +505,26 @@ print(dtree_metrics)
 
 ```
 
-```{r eval=T, results='hold'}
-dtree_metrics %>% 
-  ggplot(aes(max_depth_1, f1)) + 
-  geom_line() + 
-  geom_smooth()
+- Анализом добијених резултата може се утврдити да перформансе модела расту са порастом вредности регулационог параметра. Дакле, максимална вредност овог параметра ће дати оптимално решење. Резултат обучавања и евалуције модела са одговарајућим параметром, приказан је у наставку.
 
+```{r eval=T, results='hold'}
+dtree_model <- ml_decision_tree_classifier(
+    x = data.training, 
+    formula = Arrest ~ Community_Area + 
+                 Primary_Type + 
+                 Domestic + 
+                 Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
+                 Year,
+    max_depth = 7, 
+    impurity = "entropy")
+
+dtree_result <- dtree_model %>%
+  ml_predict(data.test) %>%
+  ml_metrics_binary()
+print(dtree_result)
 ```
 
 ### 3. Метод случајних шума:
@@ -517,9 +541,8 @@ randf_pipeline <- sc %>%
   ml_decision_tree_classifier()
 
 randf_params <- list(
-  random_forest_classifier = list(num_trees = c(10, 30, 50))
+  random_forest_classifier = list(num_trees = c(15, 25, 60))
 )
-
 
 randf_evaluator <- ml_binary_classification_evaluator(x = sc, metricName = "accuracy")
 
@@ -538,13 +561,25 @@ randf__test_models <- ml_fit(
 
 randf_metrics <- ml_validation_metrics(randf_test_models)
 print(randf_metrics)
-
 ```
+- Анализом добијених резултата може се утврдити да је модел најперформантнији када је број стабала 25. Дакле, у наставку је извршено тренирање и евалуација модела са оптималним параметром.
 
 ```{r eval=T, results='hold'}
-randf_metrics %>% 
-  ggplot(aes(max_depth_1, accuracy)) + 
-  geom_line() + 
-  geom_smooth()
+randf_model <- ml_random_forest_classifier(
+  data.training,
+  Arrest ~ Community_Area + 
+                 Primary_Type + 
+                 Domestic + 
+                 Beat + 
+                 Ward + 
+                 District +
+                 Location_Description + 
+                 Year,
+  num_trees = 25
+)
 
+randf_result <- randf_model %>%
+  ml_predict(data.test) %>%
+  ml_metrics_binary()
+print(randf_result)
 ```

@@ -152,7 +152,7 @@ primary_type_counts_1 <- primary_data_modified %>%
   arrange(desc(count)) %>%
   collect()
 
-print(primary_type_counts_1)
+print(head(primary_type_counts_1))
 ```
 
 ```{r eval=T, results='hold'}
@@ -203,16 +203,6 @@ locations_to_keep <- primary_data_modified %>%
 
 location_data_modified <- primary_data_modified %>%
   filter(Location_Description %in% locations_to_keep)
-```
-
-```{r eval=T, results='hold'}
-primary_data_modified <- primary_data_modified %>%
-  mutate(Primary_Type = case_when(
-    Primary_Type %in% c("BATTERY", "ASSAULT", "ROBBERY", "WEAPONS VIOLATION", "OFFENSE INVOLVING CHILDREN", "PUBLIC PEACE VIOLATION") ~ "VIOLENT_CRIME",
-    Primary_Type %in% c("THEFT", "BURGLARY", "MOTOR VEHICLE THEFT", "CRIMINAL TRESPASS") ~ "PROPERTY_CRIME",
-    Primary_Type %in% c("NARCOTICS", "CRIMINAL DAMAGE", "OTHER OFFENSE", "DECEPTIVE PRACTICE", "PROSTITUTION") ~ "OTHER",
-    TRUE ~ Primary_Type
-  ))
 ```
 
 -   Визуализација скупа вредности обележја *Location_Description* након трансформације:
@@ -373,20 +363,59 @@ ggplot(arrest_ratio, aes(x = Primary_Type, y = Arrest_True + Arrest_False, fill 
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
--   Визуализација односа криминалних дела који спадају у групу :
-```{r eval=T, results='hold'}
-domestic_arrest_data <- community_data_modified  %>%
-  select(Domestic, Arrest)
+-   Визуализација односа броја ухапшених и неухапшених осумњичених који су починили насиље у породици:
 
-ggplot(domestic_arrest_data, aes(x = Domestic, y = Arrest)) +
-  geom_point() +
-  labs(title = "Odnos između Domestic i Arrest",
-       x = "Domestic", y = "Arrest")
+```{r eval=T, results='hold'}
+domestic_arrested_count <- community_data_modified %>%
+  filter(Domestic == 1, Arrest == 1) %>%
+  summarise(count = n()) %>%
+  collect()
+
+domestic_not_arrested_count <- community_data_modified %>%
+  filter(Domestic == 1, Arrest == 0) %>%
+  summarise(count = n()) %>%
+  collect()  
+
+domestic_counts <- data.frame(
+  Arrest = c("Приведен", "Није приведен"),
+  Count = c(domestic_arrested_count$count, domestic_not_arrested_count$count)
+)
+
+ggplot(domestic_counts, aes(x = "", y = Count, fill = as.factor(Arrest))) +
+  geom_bar(stat = "identity", color = "#595959", position = position_stack(vjust = 0.5)) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = c("#D6262B", "#3E7C34"), name = "Приведени", labels = c("Не", "Да")) +
+  labs(title = "Oднос приведених и неприведених лица у случају насиља у породици",
+       y = NULL,
+       x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5))
+```
+
+-   Визуализација података о укупном броју успешно реализованих хапшења по години:
+
+```{r eval=T, results='hold'}
+arrests_by_year <- community_data_modified %>%
+  group_by(Year) %>%
+  summarise(Total_Arrests = sum(Arrest))
+
+ggplot(arrests_by_year, aes(x = Year, y = Total_Arrests)) +
+  geom_line(color = "#595959") +
+  geom_point(color = "black") +
+  labs(title = "Укупан број ухапшених по години",
+       x = "Година",
+       y = "Укупан број ухапшених") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+      plot.title = element_text(hjust = 0.5),
+      axis.title.x = element_text(margin = margin(t = 20)),
+      axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
 ## Класификација
 
-Класификација је заснована на предвиђању реализације хапшења осумљиченог, на основу осталих релевантних обележја. Дакле, информација о хапшењу представља циљно обележје. Претходна анализа идентификовала је проблем небалансираности података ове колоне, па га је најпре неопходно решити. За решавање проблема одабрана је матрица цене која омогућава прилагођавање цене грешке класификације. Идеја је смањити цену грешке за мањину, односно ухапшене, како би модел био склонији идентификацији те класе. Класификација је реализована помоћу три различита алгоритма: *логистичка регресија*, *стабло одлучивања* и *метод случајних шума*. Додатно, на крају секције пружен је и приказ односа перформанси ових алгоритама.
+Класификација је заснована на предвиђању реализације хапшења осумњиченог, на основу осталих релевантних обележја. Дакле, информација о хапшењу представља циљно обележје. Претходна анализа идентификовала је проблем небалансираности података ове колоне, па га је најпре неопходно решити. За решавање проблема одабрана је матрица цене која омогућава прилагођавање цене грешке класификације. Идеја је смањити цену грешке за мањину, односно ухапшене, како би модел био склонији идентификацији те класе. Класификација је реализована помоћу три различита алгоритма: *логистичка регресија*, *стабло одлучивања* и *метод случајних шума*. Додатно, на крају секције пружен је и приказ односа перформанси ових алгоритама.
 
 -   Формирање матрице цене и финална трансформација података пре обучавања модела.
 
@@ -596,9 +625,9 @@ randf_result <- randf_model %>%
 print(randf_result)
 ```
 
-## Упоредна анализа класификационих модела
+### 4. Упоредна анализа класификационих модела
 
-На следећем графику приказана је тачност алгоритама који су развијени применом различитих метода бинарне класификације. За евалуацију добијених класификационих модела коришћена је AUC-ROC (*Area Under the Reciver Operating Characteristic Curve*) крива. Ова крива представља однос између истинито позитивних и лажно позитивних предикција, где већа вредност указује на бољу способност модела да разликује између позитивних и негативних инстанци. 
+На следећем графику приказана је тачност алгоритама који су развијени применом различитих метода бинарне класификације. За евалуацију добијених класификационих модела коришћена је AUC-ROC (*Area Under the Reciver Operating Characteristic Curve*) крива. Ова крива представља однос између истинито позитивних и лажно позитивних предикција, где већа вредност указује на бољу способност модела да разликује између позитивних и негативних инстанци.
 
 ```{r eval=T, results='hold'}
 algorithm_accuracy <- data.frame(
@@ -619,7 +648,6 @@ ggplot(algorithm_accuracy, aes(x = Algorithm, y = Accuracy, group = 1)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-На основу анализе добијених резултата, може се закључити да се метода логистичке регресије показала као најперформантнија у контексту предикције хапшења осумљичених. Ова предикција се темељи на параметрима као што су врста криминалног дела, релевантне информације о локацији, година итд. Са друге стране, метода стабла одлучивања показала се најмање ефикасном. На крају, битно је напоменути да одабир параметра знатно утиче на перформансе модела. Последично, могуће је унапредити перформансе сваког модела додатним подешавањем параметара и трансформацијом података. 
+На основу анализе добијених резултата, може се закључити да се метода логистичке регресије показала као најперформантнија у контексту предикције хапшења осумљичених. Ова предикција се темељи на параметрима као што су врста криминалног дела, релевантне информације о локацији, година итд. Са друге стране, метода стабла одлучивања показала се најмање ефикасном. На крају, битно је напоменути да одабир параметра знатно утиче на перформансе модела. Последично, могуће је унапредити перформансе сваког модела додатним подешавањем параметара и трансформацијом података.
 
-
-
+## Кластеризација

@@ -2,9 +2,7 @@
 title: "Анализа криминалних дешавања на територији града Чикага"
 author: "Andrija Stanišić"
 date: "`r Sys.Date()`"
-output: 
-  html_document:
-    warning: false
+output: html_document
 ---
 
 ## Увод
@@ -88,8 +86,6 @@ data = spark_read_csv(sc,
                       path = "/home/astanisic/FTN/r-classification-model/data/crime_data.csv", 
                       header = TRUE, 
                       memory = TRUE)
-
-print(head(data))
 ```
 
 ## Припрема скупа података за даљу анализу
@@ -295,7 +291,7 @@ ggplot(community_area_counts, aes(x = as.factor(Community_Area), y = count)) +
         axis.title.y = element_text(margin = margin(r = 20)))
 ```
 
-5.  Визуализација и трансформација вредности обележја *Arrest*.
+5.  Визуализација и трансформација вредности циљног обележја *Arrest*.
 
 ```{r eval=T, results='hold'}
 arrest_count <- community_data_modified %>%
@@ -306,7 +302,7 @@ arrest_count <- community_data_modified %>%
 print(arrest_count)
 ```
 
--   Следећи граф јасно приказује велики број нерешених случајева. Конкретно, однос је скоро 3:1, дакле два од три осумљичена не буду процесуирана. У контексту класификације, ова небалансираност представља проблем. Решење проблема дато је у наредној секцији. Додатно, ради побољшања перформанси даље анализе, вредности *Arrest* колоне конвертоване су из логичког у нумерички тип.
+-   Претходно добијени подаци јасно указују на велики број нерешених случајева. Конкретно, однос је скоро 3:1, дакле два од три осумљичена не буду процесуирана. У контексту класификације, ова небалансираност представља проблем. Решење проблема дато је у наредној секцији. Додатно, ради побољшања перформанси даље анализе, вредности *Arrest* колоне конвертоване су из логичког у нумерички тип.
 
 ```{r eval=T, results='hold'}
 community_data_modified <- community_data_modified %>%
@@ -321,18 +317,6 @@ community_data_modified <- community_data_modified %>%
     TRUE ~ 0
   ))
 
-```
-
-```{r eval=T, results='hold'}
-ggplot(arrest_count, aes(x = "", y = count, fill = as.factor(Arrest))) +
-  geom_bar(stat = "identity", color = "#595959") +
-  coord_polar(theta = "y") +
-  scale_fill_manual(values = c("#D6262B", "#3E7C34"), name = "Приведени", labels = c("Не", "Да")) +
-  labs(title = "Oднос приведених и неприведених лица",
-       y = NULL) +
-  theme_minimal() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5))
 ```
 
 ## Однос примарног и предикторских обележја
@@ -651,3 +635,119 @@ ggplot(algorithm_accuracy, aes(x = Algorithm, y = Accuracy, group = 1)) +
 На основу анализе добијених резултата, може се закључити да се метода логистичке регресије показала као најперформантнија у контексту предикције хапшења осумљичених. Ова предикција се темељи на параметрима као што су врста криминалног дела, релевантне информације о локацији, година итд. Са друге стране, метода стабла одлучивања показала се најмање ефикасном. На крају, битно је напоменути да одабир параметра знатно утиче на перформансе модела. Последично, могуће је унапредити перформансе сваког модела додатним подешавањем параметара и трансформацијом података.
 
 ## Кластеризација
+
+Кластеризација је заснована на подацима о географској ширини и географској дужини локација на којима се десио злочин. Анализом резултата кластеризације могуће је утврдити нове образце интерне повезаности података, као на пример, дела града са одређеним типом криминалног дела. За реализацију кластеризације коришћен је метод *к* - најближих комшија. Због проблема великог скупа података, подаци су трансформисани тако да садрже само она обележја која ће учествовати у процесу кластеризације, дакле географска ширина и дужина. Поред тога, ова обележја су додатно филтрирана како би се избацили подаци који не припадају реалном географском интервалу града Чикага. Као и до сада, модели су тренирани са различитим параметрима, након чека је пружена кратка анализа добијених резултата.
+
+-   Екстраховање релевантних колона:
+
+```{r eval=T, results='hold'}
+cluster_data <- community_data_modified %>%
+  mutate(
+    Latitude = as.double(Latitude),
+    Longitude = as.double(Longitude)
+  )  %>%
+  select(Latitude, Longitude, Primary_Type, Domestic)
+
+cluster_data <- cluster_data %>%
+  filter(
+    Latitude >= 41.6445 & Latitude <= 42.0230,
+    Longitude >= -87.9401 & Longitude <= -87.5240
+  )
+```
+
+-   Креирање кластеризационих модела за к ∈ {5, 7, 9} кластера:
+
+```{r eval=T, results='hold'}
+k5_model <- ml_bisecting_kmeans(cluster_data, ~Latitude + Longitude, k = 5, seed = 111, max_iter = 10)
+k5_clusters <- ml_predict(k5_model, cluster_data)
+
+k7_model <- ml_bisecting_kmeans(cluster_data, ~Latitude + Longitude, k = 7, seed = 211, max_iter = 10)
+k7_clusters <- ml_predict(k7_model, cluster_data)
+
+k10_model <- ml_bisecting_kmeans(cluster_data, ~Latitude + Longitude, k = 10, seed = 311, max_iter = 10)
+k10_clusters <- ml_predict(k10_model, cluster_data)
+```
+
+-   Приказ добијених кластера када је к = 5:
+
+```{r eval=T, results='hold'}
+k5_clusters <- k5_clusters %>%
+  mutate(prediction = prediction + 1)
+
+k5_data_sample <- k5_clusters %>% sample_frac(0.005)
+
+ggplot(k5_data_sample, aes(x = Longitude, y = Latitude, color = as.factor(prediction))) +
+  geom_point(size = 2) +
+  labs(color = "Број кластера", title = "Мапа криминалних догађаја у граду Чикагу", x = "Географска дужина", y = "Географска ширина") +
+  theme_minimal() +
+  theme(text = element_text(size = 10),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 20)),
+    axis.title.y = element_text(margin = margin(r = 20)))
+```
+
+-   Приказ добијених кластера када је к = 7:
+
+```{r eval=T, results='hold'}
+k7_clusters <- k7_clusters %>%
+  mutate(prediction = prediction + 1)
+
+k7_data_sample <- k7_clusters %>% sample_frac(0.005)
+
+ggplot(k7_data_sample, aes(x = Longitude, y = Latitude, color = as.factor(prediction))) +
+  geom_point(size = 2) +
+  labs(color = "Број кластера", title = "Мапа криминалних догађаја у граду Чикагу", x = "Географска дужина", y = "Географска ширина") +
+  theme_minimal() +
+  theme(text = element_text(size = 10),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 20)),
+    axis.title.y = element_text(margin = margin(r = 20)))
+```
+
+-   Приказ добијених кластера када је к = 10:
+
+```{r eval=T, result='hold'}
+k10_clusters <- k10_clusters %>%
+  mutate(prediction = prediction + 1)
+
+k10_data_sample <- k10_clusters %>% sample_frac(0.005)
+
+ggplot(k10_data_sample, aes(x = Longitude, y = Latitude, color = as.factor(prediction))) +
+  geom_point(size = 2) +
+  labs(color = "Број кластера", title = "Мапа криминалних догађаја у граду Чикагу", x = "Географска дужина", y = "Географска ширина") +
+  theme_minimal() +
+  theme(text = element_text(size = 10),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 20)),
+    axis.title.y = element_text(margin = margin(r = 20)))
+
+```
+
+### Однос добијених кластера и иницијалних обележја
+
+Добијени кластери се могу посматрати као блокови града. У том контексту, приказани су односи кластера, дакле делова града, и доминантне врсте криминала у тим деловима. Из ових приказа могуће је идентификовати делове града који су више, односно мање, опасни, што може бити веома корисно, на пример, приликом планирања безбедносних мера или породичног путовања.
+
+-   Најзаступљенији тип криминалног дела по блоку града:
+
+```{r eval=T, result='hold'}
+crime_counts <- k5_clusters %>%
+  group_by(prediction, Primary_Type) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  collect()
+
+max_crime_type <- crime_counts %>%
+  group_by(prediction) %>%
+  filter(count == max(count)) %>%
+  collect()
+
+ggplot(max_crime_type, aes(x = factor(prediction), y = count, fill = Primary_Type)) +
+  geom_bar(stat = "identity",  color = "#595959", position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("#4169E1", "#FFA500", "#D6262B" ), name = "Тип криминала") +
+  labs(x = "Блок града", y = "Број случајева", fill = "Тип криминала") +
+  ggtitle("Најзаступљенији облик криминала по градским блоковима") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+      plot.title = element_text(hjust = 0.5),
+      axis.title.x = element_text(margin = margin(t = 20)),
+      axis.title.y = element_text(margin = margin(r = 20)))
+```

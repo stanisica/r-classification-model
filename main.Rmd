@@ -407,7 +407,6 @@ weighted_data <- community_data_modified %>%
 prepared_data <- weighted_data %>%
   select(Community_Area, Domestic, Primary_Type, Beat, Ward, District, Weight, Arrest, Year, Location_Description)
 
-print(prepared_data)
 data.split <- sdf_random_split(prepared_data, training = 0.75, test = 0.25, seed = 123)
 
 data.training <- data.split$training
@@ -470,9 +469,9 @@ logreg_model <- ml_logistic_regression(
                  Primary_Type + 
                  Domestic + 
                  Beat + 
-                 Ward + 
+                 Ward +
                  District +
-                 Location_Description + 
+                 Location_Description +
                  Year,
   reg_param = 0.01,
   weight_col = "Weight"
@@ -495,8 +494,6 @@ dtree_pipeline <- sc %>%
                  Domestic + 
                  Beat + 
                  Ward + 
-                 District +
-                 Location_Description + 
                  Year) %>%
   ml_decision_tree_classifier()
 

@@ -489,11 +489,13 @@ print(logreg_result)
 ```{r eval=T, results='hold'}
 dtree_pipeline <- sc %>% 
   ml_pipeline() %>%
-  ft_r_formula(Arrest ~ Community_Area + 
+  ft_r_formula(Community_Area + 
                  Primary_Type + 
                  Domestic + 
                  Beat + 
                  Ward + 
+                 District +
+                 Location_Description + 
                  Year) %>%
   ml_decision_tree_classifier()
 
@@ -524,7 +526,7 @@ ml_validation_metrics(dtree_test_models)
 ```{r eval=T, results='hold'}
 dtree_model <- ml_decision_tree_classifier(
     x = data.training, 
-    formula = Arrest ~ Community_Area + 
+    formula = Community_Area + 
                  Primary_Type + 
                  Domestic + 
                  Beat + 
@@ -546,7 +548,7 @@ print(dtree_result)
 ```{r eval=T, results='hold'}
 randf_pipeline <- sc %>% 
   ml_pipeline() %>%
-  ft_r_formula(Arrest ~ Community_Area + 
+  ft_r_formula(Community_Area + 
                  Primary_Type + 
                  Domestic + 
                  Beat + 
@@ -608,7 +610,7 @@ print(randf_result)
 algorithm_accuracy <- data.frame(
   Algorithm = c("Logistic Regression", "Random Forest", "Decision Tree"),
   Accuracy = c(logreg_result[1,]$.estimate, randf_result[1,]$.estimate, dtree_result[1,]$.estimate)
-)
+  )
 
 ggplot(algorithm_accuracy, aes(x = Algorithm, y = Accuracy, group = 1)) +
   geom_line(color = "#595959") +

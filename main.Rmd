@@ -455,9 +455,9 @@ print(logreg_metrics)
 ```
 
 ```{r eval=T, results='hold'}
-  logreg_metrics %>% 
-  ggplot(aes(reg_param_1, areaUnderROC)) + 
-  geom_line() + 
+  logreg_metrics %>%
+  ggplot(aes(reg_param_1, areaUnderROC)) +
+  geom_line() +
   geom_smooth()
 ```
 
